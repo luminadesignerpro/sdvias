@@ -1,0 +1,467 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>UrbanCAD Studio — Tráfego Realista, Semáforos, Lombadas & Noite</title>
+  <meta name="description" content="Simulação com semáforos temporizados, física de desaceleração em lombadas, ciclo dia/noite e iluminação acionável." />
+  
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <!-- Topbar -->
+  <header id="top-bar">
+    <div class="brand">
+      <span class="brand-badge">REAL-TRAFFIC</span>
+      <span class="brand-title">Urban<strong>CAD</strong> Simulação</span>
+    </div>
+
+    <!-- Day / Night & Street Lights Control Box -->
+    <div class="night-control-panel">
+      <button class="mode-toggle-btn" id="btn-toggle-day-night" title="Alternar entre Modo Dia e Modo Noite">
+        <span id="day-night-icon">☀️</span>
+        <span id="day-night-text">Modo Dia</span>
+      </button>
+
+      <button class="mode-toggle-btn" id="btn-toggle-lights" title="Ligar ou Desligar todos os postes e luminárias">
+        <span id="lights-icon">💡</span>
+        <span id="lights-text">Postes: Acesos</span>
+      </button>
+
+      <div class="traffic-speed-control">
+        <label>Vel. Tráfego: <strong id="speed-multiplier-val">1.0x</strong></label>
+        <input type="range" id="traffic-speed-slider" min="0.5" max="2.5" step="0.5" value="1.0" />
+      </div>
+    </div>
+
+    <!-- Search Location -->
+    <div class="search-location-box">
+      <div class="input-search-wrap">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
+        <input type="text" id="input-search-location" value="Rua Jorge Figueredo, 740, Itaitinga" placeholder="Digite endereço..." />
+        <button id="btn-search-place">📍 Ir</button>
+      </div>
+    </div>
+
+    <!-- Map Layer Switcher -->
+    <div class="map-layer-selector" title="Escolha o tipo de mapa de fundo">
+      <button class="layer-pill active" id="btn-layer-sat" data-layer="sat">🛰️ Satélite</button>
+      <button class="layer-pill" id="btn-layer-osm" data-layer="osm">🗺️ Ruas</button>
+      <button class="layer-pill" id="btn-layer-cad" data-layer="cad">⬛ CAD</button>
+    </div>
+
+    <!-- Actions -->
+    <div class="top-actions">
+      <button class="btn btn-ai-urban" id="btn-open-urban-ai" title="Assistente de IA Especialista em Vias e Tráfego">
+        <span class="ai-sparkle">✨</span>
+        <span>UrbanAI Vias</span>
+      </button>
+      <button class="btn btn-action" id="btn-undo" title="Desfazer (Ctrl+Z)">↩ Desfazer</button>
+      <button class="btn btn-action" id="btn-redo" title="Refazer (Ctrl+Y)">↪ Refazer</button>
+      <button class="btn btn-eraser" id="btn-quick-erase" title="Modo Apagar (E)">🧹 Apagar</button>
+      <button class="btn btn-outline" id="btn-clear" title="Limpar Tudo">🗑️ Limpar</button>
+      <button class="btn btn-primary" id="btn-save-project">💾 Salvar</button>
+    </div>
+  </header>
+
+  <!-- Main Layout -->
+  <div id="workspace">
+    <!-- Left Sidebar -->
+    <aside id="cad-sidebar">
+      <div class="tool-group">
+        <div class="group-title">MODOS DE TRABALHO</div>
+        <div class="tool-row" style="grid-template-columns: repeat(2, 1fr);">
+          <button class="tool-btn active" id="btn-mode-select" data-mode="select" title="Modo Seta do Mouse / Selecionar (V ou Esc)">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3l7 18 3-7 7-3L3 3z"/></svg>
+            <span>Seta / Selecionar</span>
+          </button>
+          <button class="tool-btn" id="btn-mode-draw" data-mode="draw-road" title="Construir Vias Realistas (R)">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19L19 4M4 4l15 15"/></svg>
+            <span>Criar Via</span>
+          </button>
+          <button class="tool-btn" id="btn-mode-edit" data-mode="edit-nodes" title="Editar Curvas e Traçado (M)">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+            <span>Editar Via</span>
+          </button>
+          <button class="tool-btn" id="btn-mode-equip" data-mode="place-equipment" title="Colocar Postes, Semáforos e Lombadas (P)">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v8M8 12h8"/></svg>
+            <span>Equipamentos</span>
+          </button>
+          <button class="tool-btn" id="btn-mode-lane-connect" data-mode="lane-connect" style="grid-column: span 2;" title="Ligar e Configurar Faixas entre Vias (L)">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/><circle cx="6" cy="6" r="3"/><circle cx="18" cy="18" r="3"/></svg>
+            <span>Ligar Faixas (Lane Connector)</span>
+            <span class="badge-new">NOVO</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Quick Action: Complete Road button -->
+      <div class="tool-group" id="finish-btn-group">
+        <button class="btn btn-finish-road" id="btn-finish-drawing" title="Finalizar e salvar traçado atual">
+          ✅ <strong>Concluir Traçado Desta Pista</strong>
+        </button>
+        <button class="btn btn-cancel-road" id="btn-cancel-drawing" title="Cancelar traço atual">
+          ❌ Cancelar Traço Atual
+        </button>
+      </div>
+
+      <!-- Road profiles selector -->
+      <div class="tool-group" id="road-config-group">
+        <div class="group-title">TIPO DE PISTA / PAVIMENTO</div>
+        
+        <div class="road-selector">
+          <div class="road-option" data-road-type="highway-twin">
+            <div class="road-preview highway-twin-road"></div>
+            <div class="road-info">
+              <strong>Rodovia de Pista Dupla</strong>
+              <small>Asfalto realista • Acostamento • Faixas brancas</small>
+            </div>
+          </div>
+
+          <div class="road-option" data-road-type="viaduct-real">
+            <div class="road-preview viaduct-real-road"></div>
+            <div class="road-info">
+              <strong>Viaduto Elevado (+1 Nível)</strong>
+              <small>Pilares estruturais • Sombra 3D projetada</small>
+            </div>
+          </div>
+
+          <div class="road-option" data-road-type="avenue-real">
+            <div class="road-preview avenue-real-road"></div>
+            <div class="road-info">
+              <strong>Avenida Central 4 Faixas</strong>
+              <small>Canteiro central • Calçadas de concreto</small>
+            </div>
+          </div>
+
+          <div class="road-option" data-road-type="street-real">
+            <div class="road-preview street-real-road"></div>
+            <div class="road-info">
+              <strong>Rua Urbana de Bairro</strong>
+              <small>2 faixas com divisória e guias</small>
+            </div>
+          </div>
+        </div>
+
+        <div class="setting-item">
+          <label>Curvatura do Traçado:</label>
+          <div class="segmented-control">
+            <button class="seg-btn" data-curve="straight" id="btn-curve-straight">Reta</button>
+            <button class="seg-btn active" data-curve="bezier" id="btn-curve-bezier">Curva Suave</button>
+          </div>
+        </div>
+
+        <div class="setting-item">
+          <label>Sentido do Trânsito:</label>
+          <div class="segmented-control" id="traffic-direction-group">
+            <button class="seg-btn active" id="btn-dir-twoway" data-dir="two-way" title="Pista com mão dupla: 2 faixas indo e 2 faixas voltando">⇄ Mão Dupla</button>
+            <button class="seg-btn" id="btn-dir-oneway" data-dir="one-way" title="Pista de sentido único: todas as 4 faixas fluem no mesmo sentido">➔ Sentido Único</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Equipment: Postes, Semáforos com Cronômetro, Lombadas Funcionais -->
+      <div class="tool-group" id="equipment-config-group">
+        <div class="group-title">🚦 SEMÁFOROS & LOMBADAS INTELIGENTES</div>
+        <div class="equipment-grid">
+          <button class="equip-btn" data-equip="traffic-light" title="Semáforo com cronômetro digital: carros param no vermelho e passam no verde!">
+            <span class="equip-icon">🚦</span>
+            <div class="equip-desc">
+              <strong>Semáforo Timer</strong>
+              <small>Temporizador digital</small>
+            </div>
+          </button>
+
+          <button class="equip-btn" data-equip="speed-bump" title="Lombada inteligente: carros desaceleram e freiam ao passar!">
+            <span class="equip-icon">〰️</span>
+            <div class="equip-desc">
+              <strong>Lombada Real</strong>
+              <small>Freada física</small>
+            </div>
+          </button>
+
+          <button class="equip-btn" data-equip="light-pole" title="Poste com luminária LED dupla e iluminação noturna">
+            <span class="equip-icon">💡</span>
+            <div class="equip-desc">
+              <strong>Poste LED</strong>
+              <small>Acende à noite</small>
+            </div>
+          </button>
+
+          <button class="equip-btn" data-equip="crosswalk" title="Faixa de Pedestres estilo zebra">
+            <span class="equip-icon">🦓</span>
+            <div class="equip-desc">
+              <strong>Faixa Pedestre</strong>
+              <small>Zebra</small>
+            </div>
+          </button>
+
+          <button class="equip-btn" data-equip="sign-speed" title="Placa de Velocidade 60 km/h">
+            <span class="equip-icon">🛑</span>
+            <div class="equip-desc">
+              <strong>Placa Trânsito</strong>
+              <small>Velocidade</small>
+            </div>
+          </button>
+
+          <button class="equip-btn" data-equip="tree" title="Árvore / Canteiro">
+            <span class="equip-icon">🌳</span>
+            <div class="equip-desc">
+              <strong>Árvore</strong>
+              <small>Canteiro</small>
+            </div>
+          </button>
+        </div>
+
+        <div class="setting-item" style="margin-top: 8px;">
+          <label>Instalar na Faixa / Sentido:</label>
+          <div class="segmented-control" id="equip-lane-target">
+            <button class="seg-btn active" id="btn-target-all" data-lane="all" title="Instalar em todas as faixas">🛣️ Todas</button>
+            <button class="seg-btn" id="btn-target-right" data-lane="right" title="Instalar somente na pista da direita (Sentido Ida)">➡️ Ida</button>
+            <button class="seg-btn" id="btn-target-left" data-lane="left" title="Instalar somente na pista da esquerda (Sentido Volta)">⬅️ Volta</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Presets -->
+      <div class="tool-group">
+        <div class="group-title">CENÁRIOS PRONTOS</div>
+        <div class="preset-buttons">
+          <button class="preset-btn" id="btn-preset-photo">📸 Cenário da Foto com Semáforos e Lombadas</button>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Center Stage -->
+    <main id="canvas-wrapper">
+      <div id="satellite-map"></div>
+      <canvas id="realistic-canvas"></canvas>
+
+      <!-- HUD -->
+      <div id="cad-hud">
+        <div class="hud-item scale-bar">
+          <div class="bar"></div>
+          <span id="scale-label">50 metros</span>
+        </div>
+        <div class="hud-item" id="hud-coords">
+          X: 0.0 m | Y: 0.0 m
+        </div>
+        <div class="hud-item" id="hud-environment">
+          Ambiente: <strong id="hud-env-status">☀️ Dia</strong> | Iluminação: <strong id="hud-light-status" style="color: #facc15;">Acesa</strong>
+        </div>
+      </div>
+
+      <!-- Floating Controls -->
+      <div id="canvas-floating-tools">
+        <button class="float-btn" id="fbtn-zoom-in" title="Aproximar (+)">➕</button>
+        <button class="float-btn" id="fbtn-zoom-out" title="Afastar (-)">➖</button>
+        <button class="float-btn" id="fbtn-fit" title="Centralizar">🎯</button>
+      </div>
+
+      <!-- Instruction Bar -->
+      <div id="instruction-bar">
+        <span id="instruction-text">Clique para colocar <strong>Semáforos com Cronômetro</strong> e <strong>Lombadas Funcionais</strong>! Os carros reagem em tempo real.</span>
+      </div>
+    </main>
+
+    <!-- Right Properties Panel -->
+    <aside id="properties-panel">
+      <div class="panel-section">
+        <div class="panel-title">📍 CONTROLE GERAL DE TRÁFEGO</div>
+        <div class="location-edit-box">
+          <label style="font-size: 11px; color: var(--text-secondary);">Tempo Padrão (Novos Semáforos):</label>
+          <div style="display: flex; gap: 6px; align-items: center;">
+            <input type="number" id="input-signal-timer" min="3" max="60" value="8" style="width: 65px;" />
+            <span style="color: var(--text-muted);">seg</span>
+            <button class="btn btn-outline" id="btn-apply-timer" style="padding: 5px 8px;" title="Aplicar a todos os semáforos">Aplicar a Todos</button>
+          </div>
+          <small style="color: #38bdf8; font-size: 10px; margin-top: 4px; display: block;">💡 Para mudar o tempo de <strong>um semáforo separado</strong>, basta clicar nele!</small>
+        </div>
+      </div>
+
+      <div class="panel-section">
+        <div class="panel-title">📐 MODIFICAR PERFIL DA VIA</div>
+        <div class="location-edit-box">
+          <select id="select-change-type">
+            <option value="highway-twin">Rodovia de Pista Dupla (4 Faixas)</option>
+            <option value="viaduct-real">Viaduto Elevado (4 Faixas)</option>
+            <option value="avenue-real">Avenida Central 4 Faixas</option>
+            <option value="street-real">Rua Urbana de Bairro (2 Faixas)</option>
+          </select>
+          <div style="display: flex; gap: 6px; margin-top: 4px;">
+            <button class="btn btn-outline" id="btn-apply-road-type" style="flex: 1;">Alargar / Mudar Tipo</button>
+            <button class="btn btn-outline" id="btn-toggle-road-dir" style="flex: 1;" title="Alternar entre Mão Dupla e Sentido Único">⇄ Mudar Sentido</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel-section">
+        <div class="panel-title">📐 ELEMENTO SELECIONADO</div>
+        <div id="element-props">
+          <div class="empty-state" id="empty-state-text">
+            Nenhum elemento selecionado.<br />
+            Clique em qualquer semáforo na tela para editar seu tempo individual ou apagar.
+          </div>
+          <div id="selected-card" class="selected-card-box" style="display: none;">
+            <h4 id="sel-title" style="color: var(--accent-cyan); margin-bottom: 6px;">Semáforo</h4>
+            <p id="sel-len" style="margin-bottom: 4px; font-family: var(--font-mono);"></p>
+            <p id="sel-cost" style="margin-bottom: 12px; color: var(--accent-amber);"></p>
+
+            <!-- Configuração Individual do Semáforo Selecionado -->
+            <div id="sel-traffic-light-box" style="display: none; margin-bottom: 12px; padding: 10px; background: rgba(56, 189, 248, 0.08); border: 1px solid rgba(56, 189, 248, 0.35); border-radius: 8px;">
+              <div style="font-weight: 700; color: #38bdf8; font-size: 11px; margin-bottom: 8px; display: flex; align-items: center; gap: 6px;">
+                <span>⏱️</span> TEMPO DESTE SEMÁFORO INDIVIDUAL
+              </div>
+              <div style="display: flex; flex-direction: column; gap: 6px;">
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                  <label style="font-size: 11px; color: #22c55e; font-weight: 600;">Tempo Verde:</label>
+                  <div style="display: flex; align-items: center; gap: 4px;">
+                    <input type="number" id="input-sel-green-timer" min="2" max="60" value="8" style="width: 50px; padding: 4px; font-size: 11.5px; border-radius: 4px; background: #0a0d14; border: 1px solid rgba(255,255,255,0.2); color: #fff;" />
+                    <span style="font-size: 11px; color: var(--text-muted);">s</span>
+                  </div>
+                </div>
+
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                  <label style="font-size: 11px; color: #ef4444; font-weight: 600;">Tempo Vermelho:</label>
+                  <div style="display: flex; align-items: center; gap: 4px;">
+                    <input type="number" id="input-sel-red-timer" min="2" max="60" value="8" style="width: 50px; padding: 4px; font-size: 11.5px; border-radius: 4px; background: #0a0d14; border: 1px solid rgba(255,255,255,0.2); color: #fff;" />
+                    <span style="font-size: 11px; color: var(--text-muted);">s</span>
+                  </div>
+                </div>
+
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                  <label style="font-size: 11px; color: #eab308; font-weight: 600;">Tempo Amarelo:</label>
+                  <div style="display: flex; align-items: center; gap: 4px;">
+                    <input type="number" id="input-sel-yellow-timer" min="1" max="10" value="2" style="width: 50px; padding: 4px; font-size: 11.5px; border-radius: 4px; background: #0a0d14; border: 1px solid rgba(255,255,255,0.2); color: #fff;" />
+                    <span style="font-size: 11px; color: var(--text-muted);">s</span>
+                  </div>
+                </div>
+
+                <button class="btn btn-primary" id="btn-save-sel-signal-timer" style="margin-top: 4px; justify-content: center; font-size: 11px; padding: 6px 10px;">
+                  💾 Salvar Tempo Deste Semáforo
+                </button>
+              </div>
+            </div>
+
+            <!-- Configuração da Faixa de Atuação do Equipamento -->
+            <div id="sel-equip-lane-box" style="display: none; margin-bottom: 12px; padding: 10px; background: rgba(56, 189, 248, 0.08); border: 1px solid rgba(56, 189, 248, 0.35); border-radius: 8px;">
+              <div style="font-weight: 700; color: #38bdf8; font-size: 11px; margin-bottom: 6px; display: flex; align-items: center; gap: 6px;">
+                <span>🎯</span> FAIXA / SENTIDO DE ATUAÇÃO
+              </div>
+              <select id="select-equip-target-lane" style="width: 100%; font-size: 11.5px; padding: 5px; border-radius: 4px; background: #0a0d14; border: 1px solid rgba(255,255,255,0.2); color: #fff;">
+                <option value="all">🛣️ Todas as Faixas (Ambos Sentidos)</option>
+                <option value="right">➡️ Faixa da Direita (Sentido Ida)</option>
+                <option value="left">⬅️ Faixa da Esquerda (Sentido Volta)</option>
+              </select>
+            </div>
+
+            <!-- Configuração Interativa de Conexão de Faixas (Lane Connector) -->
+            <div id="sel-road-lanes-box" style="display: none; margin-bottom: 12px; padding: 10px; background: rgba(6, 182, 212, 0.08); border: 1px solid rgba(6, 182, 212, 0.35); border-radius: 8px;">
+              <div style="font-weight: 700; color: #38bdf8; font-size: 11px; margin-bottom: 6px; display: flex; align-items: center; justify-content: space-between;">
+                <span>🔀 CONEXÃO DE FAIXAS</span>
+                <span id="lane-conn-status" style="font-size: 9.5px; color: #4ade80; font-weight: 600;">Ligada</span>
+              </div>
+              <p id="lane-conn-info" style="font-size: 10.5px; color: #94a3b8; margin-bottom: 8px;">Escolha para qual faixa da via ligada cada faixa deve entrar:</p>
+              
+              <div id="lane-link-matrix" style="display: flex; flex-direction: column; gap: 6px;">
+                <!-- Preenchido dinamicamente via JS -->
+              </div>
+
+              <div style="display: flex; gap: 4px; margin-top: 8px;">
+                <button class="btn btn-outline" id="btn-auto-link-lanes" style="flex: 1; font-size: 10px; padding: 5px;" title="Conectar faixas na ordem direta">⚡ Direto (1:1)</button>
+                <button class="btn btn-outline" id="btn-right-link-lanes" style="flex: 1; font-size: 10px; padding: 5px;" title="Conectar para faixa da direita">➡️ P/ Direita</button>
+                <button class="btn btn-outline" id="btn-clear-link-lanes" style="flex: 1; font-size: 10px; padding: 5px;" title="Resetar conexões">🧹 Limpar</button>
+              </div>
+            </div>
+
+            <button class="btn btn-delete-sel" id="btn-delete-element">🗑️ Apagar Elemento</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel-section">
+        <div class="panel-title">📊 STATUS DA SIMULAÇÃO AO VIVO</div>
+        <div class="summary-card">
+          <div class="sum-row"><span>Veículos em Trânsito:</span> <strong id="sum-cars-count">0</strong></div>
+          <div class="sum-row"><span>Semáforos Ativos:</span> <strong id="sum-signals-count">0</strong></div>
+          <div class="sum-row"><span>Lombadas de Freada:</span> <strong id="sum-bumps-count">0</strong></div>
+          <div class="sum-row"><span>Postes de Luz:</span> <strong id="sum-lights-count">0</strong></div>
+        </div>
+      </div>
+    </aside>
+  </div>
+
+  <!-- UrbanAI Floating Copilot Modal -->
+  <div id="urban-ai-drawer">
+    <div class="ai-drawer-header">
+      <div class="ai-header-info">
+        <span style="font-size: 18px;">✨</span>
+        <div>
+          <h3>UrbanAI — Engenharia de Vias</h3>
+          <span class="ai-header-badge">Online • Especialista em Traçado e Tráfego</span>
+        </div>
+      </div>
+      <button class="ai-close-btn" id="btn-close-urban-ai" title="Fechar">&times;</button>
+    </div>
+
+    <div class="ai-drawer-body">
+      <!-- Quick Actions -->
+      <div>
+        <div class="ai-section-title">⚡ Ações de Engenharia Viária em 1 Clique</div>
+        <div class="ai-action-grid">
+          <button class="ai-action-card" id="ai-act-autoconnect">
+            <span class="ai-card-title">🛠️ Auto-Conectar Vias</span>
+            <span class="ai-card-desc">Elimina pontas redondas, une o asfalto e conecta faixas perfeitamente.</span>
+          </button>
+          <button class="ai-action-card" id="ai-act-roundabout">
+            <span class="ai-card-title">🔄 Criar Rotatória</span>
+            <span class="ai-card-desc">Gera uma rotatória circular no cruzamento com ilha central.</span>
+          </button>
+          <button class="ai-action-card" id="ai-act-balance">
+            <span class="ai-card-title">⚖️ Otimizar Tráfego</span>
+            <span class="ai-card-desc">Equilibra faixas e sincroniza semáforos com onda verde.</span>
+          </button>
+          <button class="ai-action-card" id="ai-act-ramp">
+            <span class="ai-card-title">🌉 Alça de Acesso</span>
+            <span class="ai-card-desc">Cria uma curva de concordância suave entre as vias.</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Quick prompts -->
+      <div>
+        <div class="ai-section-title">💡 Comandos Rápidos</div>
+        <div class="ai-quick-prompts">
+          <button class="ai-chip" data-cmd="autoconnect">Ligar vias sem ponta redonda</button>
+          <button class="ai-chip" data-cmd="link-right">Conectar na faixa da direita</button>
+          <button class="ai-chip" data-cmd="roundabout">Construir rotatória moderna</button>
+          <button class="ai-chip" data-cmd="greenwave">Sincronizar semáforos (Onda Verde)</button>
+          <button class="ai-chip" data-cmd="clean">Remover pontas e nivelar asfalto</button>
+        </div>
+      </div>
+
+      <!-- Chat History -->
+      <div>
+        <div class="ai-section-title">💬 Assistente de Engenharia</div>
+        <div class="ai-chat-area" id="ai-chat-history">
+          <div class="ai-msg ai-msg-ai">
+            <strong>UrbanAI:</strong> Olá! Sou seu Engenheiro Especialista em Construção de Vias e Tráfego. Posso interligar vias perfeitamente com corte reto (sem pontas redondas), configurar conexões de faixas específicas ou gerar rotatórias e semáforos inteligentes. Como posso ajudar seu projeto agora?
+          </div>
+        </div>
+      </div>
+
+      <!-- Input Box -->
+      <div class="ai-input-wrap">
+        <input type="text" id="ai-prompt-input" placeholder="Ex: Conecte a via diagonal na faixa da direita..." />
+        <button class="ai-send-btn" id="btn-send-ai-prompt">Executar ➔</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+  <script src="app.js"></script>
+</body>
+</html>
